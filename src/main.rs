@@ -35,14 +35,15 @@ async fn download_item(item: Item) -> Result<()> {
         .open(&filename)
         .await;
     let Ok(mut file) = maybe_file else {
-        println!("Skipping  {}", filename.to_string_lossy());
-        return Ok(())
+        eprintln!("Skipping  {}", output_file.to_string_lossy());
+        return Ok(());
     };
 
     let url = item.enclosure().unwrap().url();
-    println!("Fetching  {}", url);
+
+    eprintln!("Fetching  {}", url);
     let response = reqwest::get(url).await?;
     file.write_all(response.bytes().await?.as_ref()).await?;
-    println!("Wrote     {}", filename.to_string_lossy());
+    eprintln!("Wrote     {}", output_file.to_string_lossy());
     Ok(())
 }
