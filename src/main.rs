@@ -1,38 +1,55 @@
-use std::{env::args, path::PathBuf};
+use std::path::{self, PathBuf};
 
+use anyhow::{anyhow, Result};
+use clap::Parser;
 use futures::future::join_all;
-use rss::{Channel, Item};
+use rss::{Channel, Guid, Item};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
-use anyhow::Result;
+#[derive(Debug, Parser)]
+/// Download audio files from a podcast RSS feed.
+struct Args {
+    /// URL of the podcast RSS feed.
+    url: String,
+
+    #[arg(short, long, default_value = ".")]
+    /// Audio file output directory.
+    outdir: PathBuf,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let rss_url = args().nth(1).unwrap();
-    let bytes = reqwest::get(&rss_url).await?.bytes().await?;
+    let Args { url, outdir } = Args::parse();
+    if !outdir.is_dir() {
+        return Err(anyhow!("--outdir must be a directory"));
+    }
+
+    let bytes = reqwest::get(&url).await?.bytes().await?;
     let channel = Channel::read_from(bytes.as_ref())?;
 
-    let handles: Vec<_> = channel.items
+    let handles: Vec<_> = channel
+        .items
         .into_iter()
-        .map(download_item)
+        .map(|item| download_item(item, outdir.clone()))
         .map(tokio::spawn)
         .collect();
     join_all(handles).await;
     Ok(())
 }
 
-async fn download_item(item: Item) -> Result<()> {
+async fn download_item(item: Item, outdir: PathBuf) -> Result<()> {
     let name = item
         .title()
-        .or_else(|| item.guid().map(|g| g.value()))
-        .unwrap();
+        .or_else(|| item.guid().map(Guid::value))
+        .expect("Failed to extract item title and GUID.")
+        .replace(path::is_separator, "-")
+        + ".mp3";
 
-    let filename = PathBuf::from(format!("{name}.mp3"));
-
+    let output_file = outdir.join(name);
     let maybe_file = OpenOptions::new()
         .create_new(true)
         .write(true)
-        .open(&filename)
+        .open(&output_file)
         .await;
     let Ok(mut file) = maybe_file else {
         eprintln!("Skipping  {}", output_file.to_string_lossy());
@@ -43,6 +60,7 @@ async fn download_item(item: Item) -> Result<()> {
 
     eprintln!("Fetching  {}", url);
     let response = reqwest::get(url).await?;
+
     file.write_all(response.bytes().await?.as_ref()).await?;
     eprintln!("Wrote     {}", output_file.to_string_lossy());
     Ok(())
