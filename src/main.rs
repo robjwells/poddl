@@ -1,7 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -96,13 +96,12 @@ fn main() -> Result<()> {
                 .ok()
         })
         .collect();
-    let episodes: Arc<Mutex<Vec<Episode>>> = Arc::new(Mutex::new(episodes));
+    let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
 
     std::thread::scope(|scope| {
         for _ in 0..n_threads {
-            let lock = episodes.clone();
-            scope.spawn(move || loop {
-                let Some(episode) = lock.lock().expect("Lock poisoned").pop() else {
+            scope.spawn(|| loop {
+                let Some(episode) = episodes.lock().unwrap().pop() else {
                     break;
                 };
                 eprintln!("Downloading {}", episode.audio_url);
