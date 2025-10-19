@@ -55,10 +55,10 @@ struct Episode {
     date: Zoned,
 }
 
-impl TryFrom<Item> for Episode {
+impl TryFrom<&Item> for Episode {
     type Error = anyhow::Error;
 
-    fn try_from(item: Item) -> Result<Self, Self::Error> {
+    fn try_from(item: &Item) -> Result<Self, Self::Error> {
         let title = item
             .title()
             .or_else(|| item.guid().map(Guid::value))
@@ -117,6 +117,18 @@ fn load_rss_channel(url: Option<String>, file: Option<PathBuf>) -> anyhow::Resul
     Ok(channel)
 }
 
+fn extract_episodes(channel: &Channel) -> Vec<Episode> {
+    channel
+        .items
+        .iter()
+        .filter_map(|i| {
+            Episode::try_from(i)
+                .inspect_err(|e| log::error!("{:?}", e))
+                .ok()
+        })
+        .collect()
+}
+
 fn main() -> anyhow::Result<()> {
     let CliArgs {
         input: InputArgs { url, file },
@@ -129,15 +141,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let channel = load_rss_channel(url, file)?;
-    let episodes: Vec<Episode> = channel
-        .items
-        .into_iter()
-        .filter_map(|i| {
-            Episode::try_from(i)
-                .inspect_err(|e| eprintln!("{:?}", e))
-                .ok()
-        })
-        .collect();
+    let episodes = extract_episodes(&channel);
     let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
 
     std::thread::scope(|scope| {
