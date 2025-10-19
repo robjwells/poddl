@@ -13,11 +13,16 @@ use url::Url;
 /// Download audio files from a podcast RSS feed.
 struct Args {
     /// URL of the podcast RSS feed.
-    url: String,
+    #[arg(group = "input")]
+    url: Option<String>,
 
-    #[arg(short, long, default_value = ".")]
+    /// Path to an RSS XML file on disk.
+    #[arg(short, long, group = "input")]
+    file: Option<PathBuf>,
+
+    #[arg(short, long = "output-dir", default_value = ".")]
     /// Audio file output directory.
-    outdir: PathBuf,
+    output_directory: PathBuf,
 
     #[arg(short = 'r', long, default_value = "false")]
     /// Use the remote filename for output files instead of the date and episode title.
@@ -91,21 +96,34 @@ impl Episode {
     }
 }
 
+fn load_rss_channel(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Channel> {
+    let reader = if let Some(url) = url {
+        let response = ureq::get(&url).call()?;
+        response.into_reader()
+    } else if let Some(file) = file {
+        let file = std::fs::OpenOptions::new().read(true).open(&file)?;
+        Box::new(file)
+    } else {
+        unreachable!("Clap should ensure either URL or file is provided.");
+    };
+    let channel = Channel::read_from(BufReader::new(reader))?;
+    Ok(channel)
+}
+
 fn main() -> anyhow::Result<()> {
     let Args {
         url,
-        outdir,
+        file,
+        output_directory,
         use_remote_filename,
         n_threads,
     } = Args::parse();
-    if !outdir.is_dir() {
-        return Err(anyhow!("--outdir must be a directory"));
+
+    if !output_directory.is_dir() {
+        return Err(anyhow!("output-dir must be a directory"));
     }
-    let outdir = outdir.as_path();
 
-    let rss_content = ureq::get(&url).call()?.into_reader();
-    let channel = Channel::read_from(BufReader::new(rss_content))?;
-
+    let channel = load_rss_channel(url, file)?;
     let episodes: Vec<Episode> = channel
         .items
         .into_iter()
@@ -124,7 +142,7 @@ fn main() -> anyhow::Result<()> {
                     break;
                 };
                 eprintln!("Downloading {}", episode.audio_url);
-                let _ = download(episode, outdir, use_remote_filename)
+                let _ = download(episode, &output_directory, use_remote_filename)
                     .inspect_err(|e| eprintln!("{e}"));
             });
         }
@@ -133,13 +151,17 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn download(episode: Episode, outdir: &Path, use_remote_filename: bool) -> anyhow::Result<()> {
+fn download(
+    episode: Episode,
+    output_directory: &Path,
+    use_remote_filename: bool,
+) -> anyhow::Result<()> {
     let filename = if use_remote_filename {
         episode.existing_filename()
     } else {
         episode.filename_with_date_and_title()
     };
-    let output_file = outdir.join(filename);
+    let output_file = output_directory.join(filename);
     let Ok(mut file) = open_output_file(&output_file) else {
         eprintln!(
             "Skipping: Already exists: {:?}",
