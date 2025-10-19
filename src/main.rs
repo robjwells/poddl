@@ -19,9 +19,9 @@ struct Args {
     /// Audio file output directory.
     outdir: PathBuf,
 
-    #[arg(short = 't', long, default_value = "false")]
-    /// Use the episode title instead of the remote filename.
-    use_title: bool,
+    #[arg(short = 'r', long, default_value = "false")]
+    /// Use the remote filename for output files instead of the date and episode title.
+    use_remote_filename: bool,
 
     #[arg(short, long, default_value = "4")]
     /// Number of threads to use to download episodes in parallel.
@@ -81,7 +81,7 @@ impl Episode {
             .unwrap()
     }
 
-    fn safe_title(&self) -> String {
+    fn filename_with_date_and_title(&self) -> String {
         // eg "2025-10-19 - Podcast episode title.mp3"
         format!(
             "{} - {}.mp3",
@@ -95,7 +95,7 @@ fn main() -> Result<()> {
     let Args {
         url,
         outdir,
-        use_title,
+        use_remote_filename,
         n_threads,
     } = Args::parse();
     if !outdir.is_dir() {
@@ -124,7 +124,8 @@ fn main() -> Result<()> {
                     break;
                 };
                 eprintln!("Downloading {}", episode.audio_url);
-                let _ = download(episode, outdir, use_title).inspect_err(|e| eprintln!("{e}"));
+                let _ = download(episode, outdir, use_remote_filename)
+                    .inspect_err(|e| eprintln!("{e}"));
             });
         }
     });
@@ -132,11 +133,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn download(episode: Episode, outdir: &Path, use_title: bool) -> Result<()> {
-    let filename = if use_title {
-        episode.safe_title()
-    } else {
+fn download(episode: Episode, outdir: &Path, use_remote_filename: bool) -> Result<()> {
+    let filename = if use_remote_filename {
         episode.existing_filename()
+    } else {
+        episode.filename_with_date_and_title()
     };
     let output_file = outdir.join(filename);
     let Ok(mut file) = open_output_file(&output_file) else {
