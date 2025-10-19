@@ -3,7 +3,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use jiff::Zoned;
 use rss::{Channel, Enclosure, Guid, Item};
@@ -46,7 +46,7 @@ struct Episode {
 impl TryFrom<Item> for Episode {
     type Error = anyhow::Error;
 
-    fn try_from(item: Item) -> std::prelude::v1::Result<Self, Self::Error> {
+    fn try_from(item: Item) -> Result<Self, Self::Error> {
         let title = item
             .title()
             .or_else(|| item.guid().map(Guid::value))
@@ -91,7 +91,7 @@ impl Episode {
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let Args {
         url,
         outdir,
@@ -133,7 +133,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn download(episode: Episode, outdir: &Path, use_remote_filename: bool) -> Result<()> {
+fn download(episode: Episode, outdir: &Path, use_remote_filename: bool) -> anyhow::Result<()> {
     let filename = if use_remote_filename {
         episode.existing_filename()
     } else {
@@ -176,7 +176,7 @@ fn download(episode: Episode, outdir: &Path, use_remote_filename: bool) -> Resul
     Ok(())
 }
 
-fn open_output_file(output_file: &PathBuf) -> Result<File> {
+fn open_output_file(output_file: &PathBuf) -> anyhow::Result<File> {
     OpenOptions::new()
         .create_new(true)
         .write(true)
