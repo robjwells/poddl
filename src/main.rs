@@ -130,11 +130,16 @@ fn extract_episodes(channel: &Channel) -> Vec<Episode> {
 }
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
+    let args = CliArgs::parse();
+    log::debug!("{args:#?}");
     let CliArgs {
         input: InputArgs { url, file },
         output_directory,
         use_remote_filename,
         n_threads,
+    } = args;
 
     if !output_directory.is_dir() {
         return Err(anyhow!("output-dir must be a directory"));
@@ -142,6 +147,7 @@ fn main() -> anyhow::Result<()> {
 
     let channel = load_rss_channel(url, file)?;
     let episodes = extract_episodes(&channel);
+    log::info!("{} episodes in RSS feed", episodes.len());
     let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
 
     std::thread::scope(|scope| {
@@ -150,9 +156,11 @@ fn main() -> anyhow::Result<()> {
                 let Some(episode) = episodes.lock().unwrap().pop() else {
                     break;
                 };
-                eprintln!("Downloading {}", episode.audio_url);
+                log::info!("Downloading {:?}", episode.filename_with_date_and_title());
+                log::debug!("{}", episode.audio_url);
+                // Download file, log but continue on error.
                 let _ = download(episode, &output_directory, use_remote_filename)
-                    .inspect_err(|e| eprintln!("{e}"));
+                    .inspect_err(|e| log::error!("{e}"));
             });
         }
     });
@@ -172,8 +180,8 @@ fn download(
     };
     let output_file = output_directory.join(filename);
     let Ok(mut file) = open_output_file(&output_file) else {
-        eprintln!(
-            "Skipping: Already exists: {:?}",
+        log::info!(
+            "Skipping as file already exists: {:?}",
             output_file.to_string_lossy()
         );
         return Ok(());
