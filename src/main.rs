@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
+use jiff::Zoned;
 use rss::{Channel, Enclosure, Guid, Item};
 use url::Url;
 
@@ -27,11 +28,19 @@ struct Args {
     n_threads: usize,
 }
 
+/// A podcast episode
+///
+/// This corresponds to a single `<item>` in the podcast RSS feed.
 #[derive(Debug)]
 struct Episode {
+    /// Podcast episode title
     title: String,
+    /// Enclosure audio file URL
     audio_url: Url,
+    /// Size of the audio file in bytes
     size: u64,
+    /// Episode publication date
+    date: Zoned,
 }
 
 impl TryFrom<Item> for Episode {
@@ -49,10 +58,15 @@ impl TryFrom<Item> for Episode {
             .context("Missing enclosure")?
             .parse()?;
         let size: u64 = item.enclosure().map(Enclosure::length).unwrap().parse()?;
+        let date = item
+            .pub_date()
+            .and_then(|pd| jiff::fmt::rfc2822::parse(pd).ok())
+            .context("Failed to extract item pub date.")?;
         Ok(Self {
             title,
             audio_url,
             size,
+            date,
         })
     }
 }
@@ -62,13 +76,18 @@ impl Episode {
         self.audio_url
             .path_segments()
             .expect("Audio URL has no path")
-            .last()
+            .next_back()
             .map(sanitize_filename::sanitize)
             .unwrap()
     }
 
     fn safe_title(&self) -> String {
-        format!("{}.mp3", sanitize_filename::sanitize(self.title.as_str()))
+        // eg "2025-10-19 - Podcast episode title.mp3"
+        format!(
+            "{} - {}.mp3",
+            self.date.strftime("%F"),
+            sanitize_filename::sanitize(self.title.as_str())
+        )
     }
 }
 
