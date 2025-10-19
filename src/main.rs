@@ -4,21 +4,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Context};
-use clap::Parser;
+use clap::{Args, Parser};
 use jiff::Zoned;
 use rss::{Channel, Enclosure, Guid, Item};
 use url::Url;
 
 #[derive(Debug, Parser)]
 /// Download audio files from a podcast RSS feed.
-struct Args {
-    /// URL of the podcast RSS feed.
-    #[arg(group = "input")]
-    url: Option<String>,
-
-    /// Path to an RSS XML file on disk.
-    #[arg(short, long, group = "input")]
-    file: Option<PathBuf>,
+struct CliArgs {
+    /// Url of RSS feed or saved XML file input.
+    #[command(flatten)]
+    input: InputArgs,
 
     #[arg(short, long = "output-dir", default_value = ".")]
     /// Audio file output directory.
@@ -31,6 +27,17 @@ struct Args {
     #[arg(short, long, default_value = "4")]
     /// Number of threads to use to download episodes in parallel.
     n_threads: usize,
+}
+
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+struct InputArgs {
+    /// URL of the podcast RSS feed.
+    url: Option<String>,
+
+    /// File containing RSS feed.
+    #[arg(short, long)]
+    file: Option<PathBuf>,
 }
 
 /// A podcast episode
@@ -111,13 +118,11 @@ fn load_rss_channel(url: Option<String>, file: Option<PathBuf>) -> anyhow::Resul
 }
 
 fn main() -> anyhow::Result<()> {
-    let Args {
-        url,
-        file,
+    let CliArgs {
+        input: InputArgs { url, file },
         output_directory,
         use_remote_filename,
         n_threads,
-    } = Args::parse();
 
     if !output_directory.is_dir() {
         return Err(anyhow!("output-dir must be a directory"));
