@@ -193,8 +193,9 @@ fn download(
     if content_length != episode.size {
         let content_kib = content_length / 1024;
         let size_kib = episode.size / 1024;
-        eprintln!(
-            "Warning :: Enclosure: {} KiB :: Header: {} ({} different)",
+        // TODO: This can report a difference of 0 when diff < 1024 bytes.
+        log::warn!(
+            "Size mismatch :: Enclosure: {} KiB :: Header: {} ({} different)",
             size_kib,
             content_kib,
             size_kib.abs_diff(content_kib)
@@ -206,8 +207,9 @@ fn download(
     if bytes_written != content_length {
         let written_kib = bytes_written / 1024;
         let size_kib = episode.size / 1024;
-        eprintln!(
-            "Warning :: Header: {} KiB :: Written: {} ({} different)",
+        // TODO: This can report a difference of 0 when diff < 1024 bytes.
+        log::warn!(
+            "Size mismatch :: Header: {} KiB :: Written: {} ({} different)",
             size_kib,
             written_kib,
             size_kib.abs_diff(written_kib)
