@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -104,9 +104,9 @@ impl Episode {
 }
 
 fn load_rss_channel(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Channel> {
-    let reader = if let Some(url) = url {
+    let reader: Box<dyn Read> = if let Some(url) = url {
         let response = ureq::get(&url).call()?;
-        response.into_reader()
+        Box::new(response.into_body().into_reader())
     } else if let Some(file) = file {
         let file = std::fs::OpenOptions::new().read(true).open(&file)?;
         Box::new(file)
@@ -188,7 +188,12 @@ fn download(
     };
 
     let response = ureq::get(episode.audio_url.as_str()).call()?;
-    let content_length: u64 = response.header("content-length").unwrap().parse()?;
+    let content_length: u64 = response
+        .headers()
+        .get("content-length")
+        .unwrap()
+        .to_str()?
+        .parse()?;
     // Report if the header indicates a different size to the enclosure.
     if content_length != episode.size {
         let content_kib = content_length / 1024;
@@ -201,7 +206,7 @@ fn download(
             size_kib.abs_diff(content_kib)
         );
     }
-    let mut response_content = response.into_reader();
+    let mut response_content = response.into_body().into_reader();
     let bytes_written = std::io::copy(&mut response_content, &mut file)?;
     // Report if we wrote a different number of bytes than the header indicated.
     if bytes_written != content_length {
