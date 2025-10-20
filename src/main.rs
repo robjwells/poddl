@@ -189,27 +189,28 @@ fn download(
 
     let response = ureq::get(episode.audio_url.as_str()).call()?;
     let content_length: u64 = response.header("content-length").unwrap().parse()?;
+    // Report if the header indicates a different size to the enclosure.
     if content_length != episode.size {
+        let content_kib = content_length / 1024;
+        let size_kib = episode.size / 1024;
         eprintln!(
-            "Warning :: Expected {} bytes :: Got {} bytes ({} different)",
-            episode.size,
-            content_length,
-            episode.size - content_length
+            "Warning :: Enclosure: {} KiB :: Header: {} ({} different)",
+            size_kib,
+            content_kib,
+            size_kib.abs_diff(content_kib)
         );
     }
     let mut response_content = response.into_reader();
     let bytes_written = std::io::copy(&mut response_content, &mut file)?;
-    //eprintln!(
-    //    "Wrote {} to {}",
-    //    episode.audio_url,
-    //    output_file.to_string_lossy()
-    //);
-    if bytes_written != episode.size {
+    // Report if we wrote a different number of bytes than the header indicated.
+    if bytes_written != content_length {
+        let written_kib = bytes_written / 1024;
+        let size_kib = episode.size / 1024;
         eprintln!(
-            "Warning :: Expected {} bytes :: Wrote {} bytes ({} different)",
-            episode.size,
-            bytes_written,
-            episode.size - content_length
+            "Warning :: Header: {} KiB :: Written: {} ({} different)",
+            size_kib,
+            written_kib,
+            size_kib.abs_diff(written_kib)
         );
     }
     Ok(())
