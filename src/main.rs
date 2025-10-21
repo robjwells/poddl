@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use anyhow::{anyhow, Context};
 use clap::{Args, Parser};
+use env_logger::Env;
 use jiff::Zoned;
 use rss::{Channel, Enclosure, Guid, Item};
 use url::Url;
@@ -105,6 +106,14 @@ impl Episode {
             sanitize_filename::sanitize(self.title.as_str())
         )
     }
+
+    fn filename(&self, use_remote_filename: bool) -> String {
+        if use_remote_filename {
+            self.existing_filename()
+        } else {
+            self.filename_with_date_and_title()
+        }
+    }
 }
 
 fn load_rss_bytes(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Vec<u8>> {
@@ -132,7 +141,8 @@ fn extract_episodes(channel: &Channel) -> Vec<Episode> {
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    // Enable info-level logging for the binary by default.
+    env_logger::Builder::from_env(Env::default().default_filter_or("poddl=info")).init();
 
     let args = CliArgs::parse();
     log::debug!("{args:#?}");
@@ -182,8 +192,6 @@ fn main() -> anyhow::Result<()> {
                 let Some(episode) = episodes.lock().unwrap().pop() else {
                     break;
                 };
-                log::info!("Downloading {:?}", episode.filename_with_date_and_title());
-                log::debug!("{}", episode.audio_url);
                 // Download file, log but continue on error.
                 let _ = download(episode, &output_directory, use_remote_filename)
                     .inspect_err(|e| log::error!("{e}"));
@@ -199,12 +207,13 @@ fn download(
     output_directory: &Path,
     use_remote_filename: bool,
 ) -> anyhow::Result<()> {
-    let filename = if use_remote_filename {
-        episode.existing_filename()
-    } else {
-        episode.filename_with_date_and_title()
-    };
-    let output_file = output_directory.join(filename);
+    let output_file = output_directory.join(episode.filename(use_remote_filename));
+    log::info!(
+        "Downloading {} {:?} to {:?}",
+        episode.date.strftime("%F"),
+        episode.title,
+        output_file.to_string_lossy(),
+    );
     let Ok(mut file) = open_output_file(&output_file) else {
         log::info!(
             "Skipping as file already exists: {:?}",
@@ -213,6 +222,7 @@ fn download(
         return Ok(());
     };
 
+    log::debug!("{}", episode.audio_url);
     let response = ureq::get(episode.audio_url.as_str()).call()?;
     let content_length: u64 = response
         .headers()
