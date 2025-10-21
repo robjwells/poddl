@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -16,16 +16,20 @@ struct CliArgs {
     #[command(flatten)]
     input: InputArgs,
 
-    #[arg(short, long = "output-dir", default_value = ".")]
     /// Audio file output directory.
+    #[arg(short, long = "output-dir", default_value = ".")]
     output_directory: PathBuf,
 
-    #[arg(short = 'r', long, default_value = "false")]
     /// Use the remote filename for output files instead of the date and episode title.
+    #[arg(short = 'r', long, default_value = "false")]
     use_remote_filename: bool,
 
-    #[arg(short, long, default_value = "4")]
+    /// Save the RSS feed to the output directory.
+    #[arg(short, long, default_value = "false")]
+    keep_rss_feed: bool,
+
     /// Number of threads to use to download episodes in parallel.
+    #[arg(short, long, default_value = "4")]
     n_threads: usize,
 }
 
@@ -103,18 +107,16 @@ impl Episode {
     }
 }
 
-fn load_rss_channel(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Channel> {
-    let reader: Box<dyn Read> = if let Some(url) = url {
+fn load_rss_bytes(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Vec<u8>> {
+    let bytes = if let Some(url) = url {
         let response = ureq::get(&url).call()?;
-        Box::new(response.into_body().into_reader())
+        response.into_body().read_to_vec()?
     } else if let Some(file) = file {
-        let file = std::fs::OpenOptions::new().read(true).open(&file)?;
-        Box::new(file)
+        std::fs::read(&file)?
     } else {
         unreachable!("Clap should ensure either URL or file is provided.");
     };
-    let channel = Channel::read_from(BufReader::new(reader))?;
-    Ok(channel)
+    Ok(bytes)
 }
 
 fn extract_episodes(channel: &Channel) -> Vec<Episode> {
@@ -138,6 +140,7 @@ fn main() -> anyhow::Result<()> {
         input: InputArgs { url, file },
         output_directory,
         use_remote_filename,
+        keep_rss_feed,
         n_threads,
     } = args;
 
@@ -145,12 +148,35 @@ fn main() -> anyhow::Result<()> {
         return Err(anyhow!("output-dir must be a directory"));
     }
 
-    let channel = load_rss_channel(url, file)?;
+    let bytes = load_rss_bytes(url, file)?;
+
+    let channel = Channel::read_from(Cursor::new(&bytes))?;
     let episodes = extract_episodes(&channel);
     log::info!("{} episodes in RSS feed", episodes.len());
     let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
 
     std::thread::scope(|scope| {
+        if keep_rss_feed {
+            // Write out a date-prefixed RSS feed to the output directory.
+            scope.spawn(|| {
+                // Eg "2025-10-21 - In Our Time.rss"
+                let filename = format!(
+                    "{} - {}.rss",
+                    jiff::Zoned::now().strftime("%F"),
+                    sanitize_filename::sanitize(channel.title())
+                );
+                let path = output_directory.join(filename);
+                match std::fs::write(&path, &bytes) {
+                    Ok(()) => {
+                        log::info!("Wrote RSS feed to {:?}", path.to_string_lossy())
+                    }
+                    Err(e) => {
+                        log::error!("Failed to write RSS feed to output directory: {e}")
+                    }
+                };
+            });
+        }
+        // Create n_threads downloader threads.
         for _ in 0..n_threads {
             scope.spawn(|| loop {
                 let Some(episode) = episodes.lock().unwrap().pop() else {
