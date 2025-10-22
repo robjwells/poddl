@@ -4,46 +4,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Context};
-use clap::{Args, Parser};
-use env_logger::Env;
+use clap::Parser;
 use jiff::Zoned;
 use rss::{Channel, Guid, Item};
 use url::Url;
 
-#[derive(Debug, Parser)]
-/// Download audio files from a podcast RSS feed.
-struct CliArgs {
-    /// Url of RSS feed or saved XML file input.
-    #[command(flatten)]
-    input: InputArgs,
+use crate::cli::InputArgs;
 
-    /// Audio file output directory.
-    #[arg(short, long = "output-dir", default_value = ".")]
-    output_directory: PathBuf,
-
-    /// Use the remote filename for output files instead of the date and episode title.
-    #[arg(short = 'r', long, default_value = "false")]
-    use_remote_filename: bool,
-
-    /// Save the RSS feed to the output directory.
-    #[arg(short, long, default_value = "false")]
-    keep_rss_feed: bool,
-
-    /// Number of threads to use to download episodes in parallel.
-    #[arg(short, long, default_value = "4")]
-    n_threads: usize,
-}
-
-#[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
-struct InputArgs {
-    /// URL of the podcast RSS feed.
-    url: Option<String>,
-
-    /// File containing RSS feed.
-    #[arg(short, long)]
-    file: Option<PathBuf>,
-}
+mod cli;
 
 /// A podcast episode
 ///
@@ -142,15 +110,18 @@ impl Episode {
     }
 }
 
-fn load_rss_bytes(url: Option<String>, file: Option<PathBuf>) -> anyhow::Result<Vec<u8>> {
+fn load_rss_bytes(input: &InputArgs) -> anyhow::Result<Vec<u8>> {
+    let InputArgs { url, file } = input;
+
     let bytes = if let Some(url) = url {
-        let response = ureq::get(&url).call()?;
+        let response = ureq::get(url).call()?;
         response.into_body().read_to_vec()?
     } else if let Some(file) = file {
-        std::fs::read(&file)?
+        std::fs::read(file)?
     } else {
         unreachable!("Clap should ensure either URL or file is provided.");
     };
+
     Ok(bytes)
 }
 
@@ -166,33 +137,42 @@ fn extract_episodes(channel: &Channel) -> Vec<Episode> {
         .collect()
 }
 
-fn main() -> anyhow::Result<()> {
-    // Enable info-level logging for the binary by default.
-    env_logger::Builder::from_env(Env::default().default_filter_or("poddl=info")).init();
-
-    let args = CliArgs::parse();
+/// Wrapper around CliArgs::parse that logs the received struct.
+fn parse_args() -> cli::CliArgs {
+    let args = cli::CliArgs::parse();
     log::debug!("{args:#?}");
-    let CliArgs {
-        input: InputArgs { url, file },
-        output_directory,
-        use_remote_filename,
-        keep_rss_feed,
-        n_threads,
-    } = args;
+    args
+}
 
+/// Enable info-level logging for the binary by default.
+fn enable_info_logs() {
+    use env_logger::{Builder, Env};
+    Builder::from_env(Env::default().default_filter_or("poddl=info")).init();
+}
+
+/// Make sure the chosen output directory exists as a directory.
+fn ensure_output_directory(output_directory: &Path) -> anyhow::Result<()> {
     if !output_directory.is_dir() {
         return Err(anyhow!("output-dir must be a directory"));
     }
+    Ok(())
+}
 
-    let bytes = load_rss_bytes(url, file)?;
+fn main() -> anyhow::Result<()> {
+    enable_info_logs();
+    let args = parse_args();
 
+    let output_directory = args.output_directory.as_path();
+    ensure_output_directory(output_directory)?;
+
+    let bytes = load_rss_bytes(&args.input)?;
     let channel = Channel::read_from(Cursor::new(&bytes))?;
     let episodes = extract_episodes(&channel);
     log::info!("{} episodes in RSS feed", episodes.len());
     let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
 
     std::thread::scope(|scope| {
-        if keep_rss_feed {
+        if args.keep_rss_feed {
             // Write out a date-prefixed RSS feed to the output directory.
             scope.spawn(|| {
                 // Eg "2025-10-21 - In Our Time.rss"
@@ -213,13 +193,13 @@ fn main() -> anyhow::Result<()> {
             });
         }
         // Create n_threads downloader threads.
-        for _ in 0..n_threads {
+        for _ in 0..args.n_threads {
             scope.spawn(|| loop {
                 let Some(episode) = episodes.lock().unwrap().pop() else {
                     break;
                 };
                 // Download file, log but continue on error.
-                let _ = download(episode, &output_directory, use_remote_filename)
+                let _ = download(episode, output_directory, args.use_remote_filename)
                     .inspect_err(|e| log::error!("{e}"));
             });
         }
