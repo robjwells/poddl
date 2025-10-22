@@ -167,6 +167,23 @@ fn ensure_output_directory(output_directory: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Write a date-prefixed RSS feed to the output directory.
+///
+/// Logs but otherwise ignores any error.
+fn write_rss_feed(channel_title: &str, output_directory: &Path, rss_bytes: &[u8]) {
+    // Eg "2025-10-21 - In Our Time.rss"
+    let filename = format!(
+        "{} - {}.rss",
+        jiff::Zoned::now().strftime("%F"),
+        sanitize_filename::sanitize(channel_title)
+    );
+    let path = output_directory.join(filename);
+    match std::fs::write(&path, rss_bytes) {
+        Ok(()) => log::info!("Wrote RSS feed to {:?}", path.to_string_lossy()),
+        Err(e) => log::error!("Failed to write RSS feed to output directory: {e}"),
+    };
+}
+
 fn main() -> anyhow::Result<()> {
     enable_info_logs();
     let args = parse_args();
@@ -182,24 +199,7 @@ fn main() -> anyhow::Result<()> {
 
     std::thread::scope(|scope| {
         if args.keep_rss_feed {
-            // Write out a date-prefixed RSS feed to the output directory.
-            scope.spawn(|| {
-                // Eg "2025-10-21 - In Our Time.rss"
-                let filename = format!(
-                    "{} - {}.rss",
-                    jiff::Zoned::now().strftime("%F"),
-                    sanitize_filename::sanitize(channel.title())
-                );
-                let path = output_directory.join(filename);
-                match std::fs::write(&path, &bytes) {
-                    Ok(()) => {
-                        log::info!("Wrote RSS feed to {:?}", path.to_string_lossy())
-                    }
-                    Err(e) => {
-                        log::error!("Failed to write RSS feed to output directory: {e}")
-                    }
-                };
-            });
+            scope.spawn(|| write_rss_feed(channel.title(), output_directory, &bytes));
         }
         // Create n_threads downloader threads.
         for _ in 0..args.n_threads {
