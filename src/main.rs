@@ -151,9 +151,18 @@ fn enable_info_logs() {
 }
 
 /// Make sure the chosen output directory exists as a directory.
+///
+/// Creates the directory if it does not already exist.
 fn ensure_output_directory(output_directory: &Path) -> anyhow::Result<()> {
-    if !output_directory.is_dir() {
-        return Err(anyhow!("output-dir must be a directory"));
+    // Something else is already present at output_directory.
+    if output_directory.exists() && !output_directory.is_dir() {
+        return Err(anyhow!(
+            "Chosen output directory exists and is not a directory."
+        ));
+    }
+    // Create the directory if it does not exist.
+    if !output_directory.exists() {
+        std::fs::create_dir(output_directory)?;
     }
     Ok(())
 }
