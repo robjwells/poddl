@@ -126,7 +126,7 @@ fn load_rss_bytes(input: &InputArgs) -> anyhow::Result<Vec<u8>> {
 }
 
 fn extract_episodes(channel: &Channel) -> Vec<Episode> {
-    channel
+    let episodes: Vec<Episode> = channel
         .items
         .iter()
         .filter_map(|i| {
@@ -134,7 +134,9 @@ fn extract_episodes(channel: &Channel) -> Vec<Episode> {
                 .inspect_err(|e| log::error!("{:?}", e))
                 .ok()
         })
-        .collect()
+        .collect();
+    log::info!("{} episodes in RSS feed", episodes.len());
+    episodes
 }
 
 /// Wrapper around CliArgs::parse that logs the received struct.
@@ -193,9 +195,7 @@ fn main() -> anyhow::Result<()> {
 
     let bytes = load_rss_bytes(&args.input)?;
     let channel = Channel::read_from(Cursor::new(&bytes))?;
-    let episodes = extract_episodes(&channel);
-    log::info!("{} episodes in RSS feed", episodes.len());
-    let episodes: Mutex<Vec<Episode>> = Mutex::new(episodes);
+    let episodes = Mutex::new(extract_episodes(&channel));
 
     std::thread::scope(|scope| {
         if args.keep_rss_feed {
