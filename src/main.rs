@@ -23,6 +23,7 @@ struct Episode {
     /// Enclosure audio file URL
     audio_url: Url,
     /// Size of the audio file in bytes
+    #[allow(dead_code)]
     size: u64,
     /// Episode publication date
     date: Zoned,
@@ -239,38 +240,9 @@ fn download(
 
     log::debug!("{}", episode.audio_url);
     let response = ureq::get(episode.audio_url.as_str()).call()?;
-    let content_length: u64 = response
-        .headers()
-        .get("content-length")
-        .unwrap()
-        .to_str()?
-        .parse()?;
-    // Report if the header indicates a different size to the enclosure.
-    if content_length != episode.size {
-        let content_kib = content_length / 1024;
-        let size_kib = episode.size / 1024;
-        // TODO: This can report a difference of 0 when diff < 1024 bytes.
-        log::warn!(
-            "Size mismatch :: Enclosure: {} KiB :: Header: {} ({} different)",
-            size_kib,
-            content_kib,
-            size_kib.abs_diff(content_kib)
-        );
-    }
     let mut response_content = response.into_body().into_reader();
-    let bytes_written = std::io::copy(&mut response_content, &mut file)?;
-    // Report if we wrote a different number of bytes than the header indicated.
-    if bytes_written != content_length {
-        let written_kib = bytes_written / 1024;
-        let size_kib = episode.size / 1024;
-        // TODO: This can report a difference of 0 when diff < 1024 bytes.
-        log::warn!(
-            "Size mismatch :: Header: {} KiB :: Written: {} ({} different)",
-            size_kib,
-            written_kib,
-            size_kib.abs_diff(written_kib)
-        );
-    }
+    let _ = std::io::copy(&mut response_content, &mut file)?;
+
     Ok(())
 }
 
