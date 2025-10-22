@@ -7,7 +7,7 @@ use anyhow::{anyhow, Context};
 use clap::{Args, Parser};
 use env_logger::Env;
 use jiff::Zoned;
-use rss::{Channel, Enclosure, Guid, Item};
+use rss::{Channel, Guid, Item};
 use url::Url;
 
 #[derive(Debug, Parser)]
@@ -58,6 +58,8 @@ struct Episode {
     size: u64,
     /// Episode publication date
     date: Zoned,
+    /// Enclosure mime type, indicates the extension.
+    mime_type: String,
 }
 
 impl TryFrom<&Item> for Episode {
@@ -69,12 +71,10 @@ impl TryFrom<&Item> for Episode {
             .or_else(|| item.guid().map(Guid::value))
             .map(sanitize_filename::sanitize)
             .context("Failed to extract item title and GUID.")?;
-        let audio_url: Url = item
-            .enclosure()
-            .map(Enclosure::url)
-            .context("Missing enclosure")?
-            .parse()?;
-        let size: u64 = item.enclosure().map(Enclosure::length).unwrap().parse()?;
+        let enclosure = item.enclosure().context("Missing enclosure")?;
+        let audio_url: Url = enclosure.url().parse()?;
+        let size: u64 = enclosure.length.parse()?;
+        let mime_type = enclosure.mime_type.clone();
         let date = item
             .pub_date()
             .and_then(|pd| jiff::fmt::rfc2822::parse(pd).ok())
@@ -84,11 +84,36 @@ impl TryFrom<&Item> for Episode {
             audio_url,
             size,
             date,
+            mime_type,
         })
     }
 }
 
 impl Episode {
+    /// Produce an extension matching the mime type
+    ///
+    /// [Apple lists] the following supported file formats:
+    ///
+    /// - M4A: audio/x-m4a
+    /// - MP3: audio/mpeg
+    /// - MOV: video/quicktime
+    /// - MP4: video/mp4
+    /// - M4V: video/x-m4v
+    /// - PDF: application/pdf
+    ///
+    /// [Apple lists]: https://help.apple.com/itc/podcasts_connect/#/itcb54353390
+    fn extension(&self) -> &'static str {
+        match self.mime_type.as_ref() {
+            "audio/mpeg" => "mp3",
+            "audio/x-m4a" => "m4a",
+            "video/quicktime" => "mov",
+            "video/mp4" => "mp4",
+            "video/x-m4v" => "m4v",
+            "application/pdf" => "pdf",
+            mt => panic!("unexpected mime time {:?}", mt),
+        }
+    }
+
     fn existing_filename(&self) -> String {
         self.audio_url
             .path_segments()
@@ -101,9 +126,10 @@ impl Episode {
     fn filename_with_date_and_title(&self) -> String {
         // eg "2025-10-19 - Podcast episode title.mp3"
         format!(
-            "{} - {}.mp3",
+            "{} - {}.{}",
             self.date.strftime("%F"),
-            sanitize_filename::sanitize(self.title.as_str())
+            sanitize_filename::sanitize(self.title.as_str()),
+            self.extension()
         )
     }
 
