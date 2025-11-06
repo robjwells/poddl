@@ -21,6 +21,16 @@ variable. Use `RUST_LOG=off` to suppress all output.
 
 [RUST_LOG]: https://docs.rs/env_logger/latest/env_logger/#enabling-logging
 
+### Installation
+
+Install via [cargo][] with:
+
+```
+cargo install --git https://github.com/robjwells/poddl poddl`
+```
+
+[cargo]: https://doc.rust-lang.org/cargo/getting-started/installation.html
+
 ### Example usage
 
 Let's download the public feed for [Fourth Reich Archaeology][4ra], a great
