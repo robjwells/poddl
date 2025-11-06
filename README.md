@@ -99,3 +99,8 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 ```
+
+### License
+
+Copyright 2025 Rob Wells. Licensed under the MIT and Apache 2.0 licenses, at
+your option.
