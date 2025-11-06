@@ -190,11 +190,11 @@ fn ensure_output_directory(output_directory: &Path) -> anyhow::Result<()> {
 /// Logs but otherwise ignores any error.
 fn write_rss_feed(channel_title: &str, output_directory: &Path, rss_bytes: &[u8]) {
     // Eg "2025-10-21 - In Our Time.rss"
-    let filename = format!(
+    let filename = sanitize_filename::sanitize(format!(
         "{} - {}.rss",
         jiff::Zoned::now().strftime("%F"),
-        sanitize_filename::sanitize(channel_title)
-    );
+        channel_title
+    ));
     let path = output_directory.join(filename);
     match std::fs::write(&path, rss_bytes) {
         Ok(()) => log::info!("Wrote RSS feed to {:?}", path.to_string_lossy()),
