@@ -25,8 +25,8 @@ variable. Use `RUST_LOG=off` to suppress all output.
 
 Install via [cargo][] with:
 
-```
-cargo install --git https://github.com/robjwells/poddl poddl`
+```sh
+cargo install --git https://github.com/robjwells/poddl poddl
 ```
 
 [cargo]: https://doc.rust-lang.org/cargo/getting-started/installation.html
