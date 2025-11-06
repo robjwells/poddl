@@ -57,7 +57,7 @@ And the output:
 ...
 ```
 
-[4ra]: https://creators.spotify.com/pod/profile/fourth-reich-archaeology/
+[4ra]: https://www.patreon.com/c/FourthReichArchaeology/
 [4ra-spotify]: https://creators.spotify.com/pod/profile/fourth-reich-archaeology/
 [4ra-rss]: https://anchor.fm/s/f94a82ac/podcast/rss
 
