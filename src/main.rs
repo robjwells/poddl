@@ -83,6 +83,7 @@ impl Episode {
         }
     }
 
+    /// Filename from the RSS feed enclosure.
     fn existing_filename(&self) -> String {
         self.audio_url
             .path_segments()
@@ -92,16 +93,28 @@ impl Episode {
             .unwrap()
     }
 
+    /// Filename composed of the title prefixed with the episode's ISO date.
     fn filename_with_date_and_title(&self) -> String {
-        // eg "2025-10-19 - Podcast episode title.mp3"
+        // Limit the length of the filename part used by the title.
+        let title = {
+            // 255 is the truncate limit for sanitize_filename, -10 for the date, -3 for the
+            // separator, -4 for the extension.
+            let mut limit: usize = 255 - 10 - 3 - 4;
+            while !self.title.is_char_boundary(limit) {
+                limit -= 1;
+            }
+            self.title.split_at(limit).0
+        };
+
         format!(
             "{} - {}.{}",
             self.date.strftime("%F"),
-            sanitize_filename::sanitize(self.title.as_str()),
+            sanitize_filename::sanitize(title),
             self.extension()
         )
     }
 
+    /// Select a filename based on the user's choice.
     fn filename(&self, use_remote_filename: bool) -> String {
         if use_remote_filename {
             self.existing_filename()
@@ -111,6 +124,7 @@ impl Episode {
     }
 }
 
+/// Read RSS feed bytes from a URL or a file.
 fn load_rss_bytes(input: &InputArgs) -> anyhow::Result<Vec<u8>> {
     let InputArgs { url, file } = input;
 
@@ -126,6 +140,7 @@ fn load_rss_bytes(input: &InputArgs) -> anyhow::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Extract episode information from the RSS feed.
 fn extract_episodes(channel: &Channel) -> Vec<Episode> {
     let episodes: Vec<Episode> = channel
         .items
@@ -218,6 +233,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Download an episode to a file.
 fn download(
     episode: Episode,
     output_directory: &Path,
@@ -246,6 +262,7 @@ fn download(
     Ok(())
 }
 
+/// Open a new file for writing at the given path.
 fn open_output_file(output_file: &PathBuf) -> anyhow::Result<File> {
     OpenOptions::new()
         .create_new(true)
