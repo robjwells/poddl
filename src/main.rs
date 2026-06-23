@@ -74,12 +74,15 @@ impl Episode {
     fn extension(&self) -> &'static str {
         match self.mime_type.as_ref() {
             "audio/mpeg" => "mp3",
+            "audio/mp4" => "mp4",
+            "audio/x-aiff" => "aiff",
             "audio/x-m4a" => "m4a",
+            "audio/x-wav" => "wav",
             "video/quicktime" => "mov",
             "video/mp4" => "mp4",
             "video/x-m4v" => "m4v",
             "application/pdf" => "pdf",
-            mt => panic!("unexpected mime time {:?}", mt),
+            mt => panic!("unexpected mime type {:?}", mt),
         }
     }
 
